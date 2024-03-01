@@ -1,6 +1,7 @@
 import { Kafka, Producer } from "kafkajs"
 import fs from 'fs'
 import path from 'path'
+import prismaClient from "./prisma";
 
 const kafka = new Kafka({
     brokers: ['kafka-2dda8afd-rishabh9803451416-a557.a.aivencloud.com:24125'],
@@ -34,6 +35,34 @@ export async function produceMessage(message: string) {
     })
     return true;
 } 
+
+export async function startConsumer()  {
+    console.log('consumer started')
+    const consumer = kafka.consumer({groupId: "default"});
+    await consumer.connect();
+    await consumer.subscribe({topic: "MESSAGES", fromBeginning: true});
+
+    await consumer.run({
+        autoCommit: true,
+        eachMessage: async ({message, pause}) => {
+           
+            if (!message.value) return;
+            console.log(`New message received..`)
+            try{
+            await prismaClient.messages.create({
+                data: {
+                    text: message.value?.toString()
+                }
+            })
+        } catch(err){
+            console.log('something is wrong')
+            pause()
+            setTimeout(() =>{consumer.resume([{topic: 'MESSAGES'}])}, 60*1000)
+        }
+        }
+    })
+    
+}
 
 
 export default kafka
